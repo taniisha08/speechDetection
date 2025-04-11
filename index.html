@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html ng-app="speechApp">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Transcript (Simple)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .status {
+      font-size: 20px;
+      font-weight: bold;
+      color: green;
+      margin: 20px;
+    }
+
+    .live-text {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .transcript {
+      max-width: 600px;
+      margin: 0 auto;
+      text-align: left;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .entry {
+      margin-bottom: 12px;
+    }
+
+    .timestamp {
+      color: #999;
+      font-size: 0.9em;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body ng-controller="SpeechController as ctrl">
+
+  <h2>🎙️ Live Transcript</h2>
+
+  <button ng-click="ctrl.start()">Start Listening</button>
+
+  <div class="status">
+    {{ ctrl.isSpeaking ? 'Speaking...' : 'Not Speaking' }}
+  </div>
+
+  <div class="live-text">
+    <strong>Current:</strong> {{ ctrl.liveSentence }}
+  </div>
+
+  <div class="transcript">
+    <h3>Transcript</h3>
+    <div class="entry" ng-repeat="item in ctrl.transcript">
+      <strong>{{item.speaker}}</strong>
+      <span class="timestamp">[{{item.timestamp}}]</span>: {{item.sentence}}
+    </div>
+  </div>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+  <script>
+    angular.module('speechApp', [])
+      .controller('SpeechController', function($scope, $timeout) {
+        const vm = this;
+        vm.transcript = [];
+        vm.liveSentence = "";
+        vm.isSpeaking = false;
+        let recognition;
+        let silenceTimer = null;
+        let sentenceStartTime = null;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        const SILENCE_TIMEOUT = 1500;
+
+        function getCurrentTimestamp() {
+          const now = new Date();
+          return now.toTimeString().split(" ")[0];
+        }
+
+        function resetSilenceDetection() {
+          if (silenceTimer) $timeout.cancel(silenceTimer);
+          vm.isSpeaking = true;
+
+          silenceTimer = $timeout(() => {
+            vm.isSpeaking = false;
+            if (vm.liveSentence.trim()) {
+              vm.transcript.push({
+                speaker: "candidate",
+                sentence: vm.liveSentence.trim(),
+                timestamp: sentenceStartTime || getCurrentTimestamp()
+              });
+              vm.liveSentence = "";
+              sentenceStartTime = null;
+            }
+            $scope.$apply();
+          }, SILENCE_TIMEOUT);
+        }
+
+        function initSpeechRecognition() {
+          if (!SpeechRecognition) {
+            alert("Web Speech API not supported in your browser.");
+            return;
+          }
+
+          recognition = new SpeechRecognition();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = 'en-IN';  
+
+          recognition.onresult = function(event) {
+            let interim = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              const result = event.results[i];
+              if (result.isFinal) {
+                vm.liveSentence += result[0].transcript + " ";
+              } else {
+                interim += result[0].transcript;
+              }
+            }
+
+            if (!sentenceStartTime) {
+              sentenceStartTime = getCurrentTimestamp();
+            }
+
+            resetSilenceDetection();
+            $scope.$apply();
+          };
+
+          recognition.onerror = function(err) {
+            console.error("Speech recognition error:", err);
+          };
+
+          recognition.start();
+        }
+
+        vm.start = function() {
+          initSpeechRecognition();
+        };
+      });
+  </script>
+</body>
+</html>
